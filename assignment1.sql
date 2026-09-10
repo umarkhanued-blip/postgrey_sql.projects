@@ -1,0 +1,447 @@
+create  database E_commerceLogistics;
+DROP TABLE IF EXISTS order_items CASCADE;
+DROP TABLE IF EXISTS orders CASCADE;
+DROP TABLE IF EXISTS products CASCADE;
+DROP TABLE IF EXISTS customer CASCADE;
+
+-- 2. Create Customer Table
+CREATE TABLE customer (
+    customer_id SERIAL PRIMARY KEY,
+    first_name VARCHAR(50) NOT NULL,
+    last_name VARCHAR(50) NOT NULL,
+    email VARCHAR(100) UNIQUE NOT NULL,
+    sign_up TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    country VARCHAR(50) NOT NULL,
+    acquisition_channel VARCHAR(40) CHECK (LOWER(acquisition_channel) IN ('organic search', 'paid ads', 'referral', 'social media', 'direct'))
+);
+
+-- 3. Create Products Table 
+CREATE TABLE products (
+    product_id SERIAL PRIMARY KEY,
+    product_name VARCHAR(100) NOT NULL,
+    category VARCHAR(50) NOT NULL,
+    sub_category VARCHAR(50) NOT NULL,
+    unit_cost NUMERIC(10, 2) NOT NULL CHECK (unit_cost >= 0),
+    unit_price NUMERIC(10, 2) NOT NULL CHECK (unit_price >= unit_cost)
+);
+
+-- 4. Create Orders Table (Iska constraint automatic LOWER matching handle karega)
+CREATE TABLE orders (
+    order_id SERIAL PRIMARY KEY,
+    customer_id INT NOT NULL REFERENCES customer(customer_id) ON DELETE CASCADE,
+    order_date TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    shipped_date TIMESTAMP WITH TIME ZONE,
+    delivered_date TIMESTAMP WITH TIME ZONE,
+    order_status VARCHAR(20) NOT NULL CHECK (LOWER(order_status) IN ('pending', 'processing', 'shipped', 'delivered', 'cancelled', 'returned')),
+    fulfillment_center_id INT NOT NULL,
+    CONSTRAINT check_delivery_date CHECK (shipped_date IS NULL OR shipped_date >= order_date)
+);
+
+-- 5. Create Order Items Table
+CREATE TABLE order_items (
+    order_item_id SERIAL PRIMARY KEY,
+    order_id INT NOT NULL REFERENCES orders(order_id) ON DELETE CASCADE,
+    product_id INT NOT NULL REFERENCES products(product_id),
+    quantity INT NOT NULL CHECK (quantity > 0),
+    discount_amount NUMERIC(10, 2) DEFAULT 0.00 CHECK (discount_amount >= 0),
+    unit_price_paid NUMERIC(10, 2) NOT NULL CHECK (unit_price_paid >= 0)
+);
+
+-- 6. Performance Indexes
+CREATE INDEX idx_orders_customer_date ON orders(customer_id, order_date);
+CREATE INDEX idx_order_items_order_product ON order_items(order_id, product_id);
+
+-- 7. Seed Customers
+INSERT INTO customer (first_name, last_name, email, sign_up, country, acquisition_channel) VALUES
+('Alex', 'Mercer', 'alex.m@example.com', '2025-01-10 08:30:00+00', 'USA', 'Paid Ads'),
+('Beatriz', 'Silva', 'b.silva@example.com', '2025-01-15 14:20:00+00', 'Brazil', 'Organic Search'),
+('Charlie', 'Chen', 'cchen@example.com', '2025-02-01 09:00:00+00', 'Canada', 'Referral'), -- Fixed: 'Canada' added
+('Diana', 'Prince', 'diana@example.com', '2025-02-12 11:45:00+00', 'USA', 'Social Media'),
+('Ethan', 'Hunt', 'ehunt@example.com', '2025-03-05 16:10:00+00', 'UK', 'Direct'),
+('Fiona', 'Gallagher', 'fgall@example.com', '2025-03-20 18:05:00+00', 'USA', 'Paid Ads'),
+('George', 'Clark', 'gclark@example.com', '2025-04-02 07:12:00+00', 'UK', 'Organic Search');
+
+-- 8. Seed Products
+INSERT INTO products (product_name, category, sub_category, unit_cost, unit_price) VALUES
+('UltraBook Pro 15', 'Electronics', 'Laptops', 800.00, 1200.00),
+('Noise-Cancel Headphones', 'Electronics', 'Audio', 70.00, 150.00),
+('Ergonomic Mesh Chair', 'Furniture', 'Office', 120.00, 250.00),
+('Mechanical Gaming Keyboard', 'Electronics', 'Accessories', 40.00, 90.00),
+('Standing Desk 60x30', 'Furniture', 'Office', 200.00, 450.00),
+('4K Monitor 27 inch', 'Electronics', 'Displays', 180.00, 320.00);
+
+-- 9. Seed Orders (LOWER function ke sath)
+INSERT INTO orders (customer_id, order_date, shipped_date, delivered_date, order_status, fulfillment_center_id) VALUES
+(1, '2025-01-12 10:00:00+00', '2025-01-13 12:00:00+00', '2025-01-16 15:00:00+00', LOWER('Delivered'), 101),
+(1, '2025-02-14 11:30:00+00', '2025-02-15 10:00:00+00', '2025-02-18 14:00:00+00', LOWER('Delivered'), 101),
+(2, '2025-01-18 16:00:00+00', '2025-01-20 09:00:00+00', '2025-01-26 11:00:00+00', LOWER('Delivered'), 102),
+(3, '2025-02-05 13:20:00+00', '2025-02-06 08:00:00+00', '2025-02-09 17:00:00+00', LOWER('Delivered'), 101),
+(1, '2025-03-01 09:15:00+00', '2025-03-02 11:00:00+00', '2025-03-05 13:00:00+00', LOWER('Delivered'), 101),
+(4, '2025-02-15 10:00:00+00', '2025-02-16 12:00:00+00', '2025-02-20 16:00:00+00', LOWER('Returned'), 103),
+(5, '2025-03-10 14:00:00+00', '2025-03-11 09:00:00+00', '2025-03-14 10:00:00+00', LOWER('Delivered'), 102),
+(2, '2025-03-22 18:00:00+00', '2025-03-24 10:00:00+00', NULL, LOWER('Shipped'), 102),
+(6, '2025-03-25 11:00:00+00', NULL, NULL, LOWER('Cancelled'), 101),
+(3, '2025-04-01 08:30:00+00', '2025-04-02 10:00:00+00', '2025-04-05 12:00:00+00', LOWER('Delivered'), 101);
+
+-- 10. Seed Order Items
+INSERT INTO order_items (order_id, product_id, quantity, discount_amount, unit_price_paid) VALUES
+(1, 1, 1, 0.00, 1200.00),
+(1, 2, 1, 10.00, 140.00),
+(2, 4, 2, 0.00, 90.00),
+(3, 3, 1, 20.00, 230.00),
+(4, 5, 1, 50.00, 400.00),
+(4, 6, 2, 0.00, 320.00),
+(5, 2, 1, 0.00, 150.00),
+(6, 1, 1, 100.00, 1100.00),
+(7, 3, 2, 30.00, 235.00),
+(8, 4, 1, 0.00, 90.00),
+(9, 6, 1, 0.00, 320.00),
+(10, 5, 1, 0.00, 450.00);
+
+-- Fulfillment Speed Summary: Calculate the average delivery duration (in days, rounded to two decimal places)
+-- for each fulfillment center, considering only orders with a 'Delivered' status.
+-- means 101 warehouse ne jaldi order delieverd  keya 
+-- SELECT 
+--     fulfillment_center_id,
+--     -- Avg duration calculate karke 2 decimal tak round kiya
+--     ROUND(AVG(EXTRACT(EPOCH FROM (delivered_date - order_date)) / 86400)::numeric, 2) AS avg_delivery_days
+-- FROM 
+--     orders
+-- -- Sirf delivered orders filter kiye (case-insensitive check ke sath)
+-- WHERE 
+--     LOWER(order_status) = 'delivered'
+-- GROUP BY 
+--     fulfillment_center_id
+-- ORDER BY 
+--     avg_delivery_days ASC;
+select fulfillment_center_id as warehouse_id ,round(avg(delivered_date::date-order_date::date),2) as average_WAREHOUSE_data_days
+from orders where lower(order_status)='delivered' group by fulfillment_center_id order by average_whole_data_days asc limit 1
+-- Q:2 Category Profit Margins: For each product category, calculate the gross profit margin percentage:
+SELECT 
+    p.category,
+    p.sub_category,
+    -- 1. Total Revenue per category/sub-category
+    SUM(oi.quantity * oi.unit_price_paid) AS Revenue_percategory,
+    
+    -- 2. Total Cost per category/sub-category
+    SUM(p.unit_cost * oi.quantity) AS Cost_per_category,
+    
+    -- 3. Gross Profit (Revenue - Cost)
+    (SUM(oi.quantity * oi.unit_price_paid) - SUM(p.unit_cost * oi.quantity)) AS gross_profit,
+    
+    -- 4. Gross Profit Percentage with proper brackets and NULL check
+    ROUND(
+        ((SUM(oi.quantity * oi.unit_price_paid) - SUM(p.unit_cost * oi.quantity)) 
+        / NULLIF(SUM(oi.quantity * oi.unit_price_paid), 0)) * 100, 
+        2
+    ) AS gross_profit_perc
+
+FROM order_items oi 
+JOIN products p ON p.product_id = oi.product_id 
+GROUP BY p.category, p.sub_category 
+ORDER BY gross_profit ASC, gross_profit_perc ASC;
+
+-- Q:3    High-Value Acquisition Channels: Find all acquisition channels that brought 
+-- in at least 2 unique customers who generated total net sales exceeding $\$500.00$
+SELECT 
+    c.acquisition_channel, 
+    COUNT(DISTINCT c.customer_id) AS unique_person,
+    SUM(oi.unit_price_paid * oi.quantity) AS total_both_net_sale 
+FROM order_items oi -- Yahan se shuru kiya
+JOIN orders o ON oi.order_id = o.order_id -- Pehle orders table join hoga order_id par
+JOIN customer c ON o.customer_id = c.customer_id -- Phir customer table join hoga customer_id par
+GROUP BY c.acquisition_channel 
+HAVING COUNT(DISTINCT c.customer_id) >= 2 
+   AND SUM(oi.unit_price_paid * oi.quantity) > 500.00
+ORDER BY total_both_net_sale DESC;
+
+-- Additional Basic Questions (Project 1)
+-- Top Spenders Identification: Write a query to find the top 3 customers who
+-- have spent the most total money (accounting for discounts and quantities) across all their orders.
+-- Display customer_id, first_name, last_name, and total_spent.
+select c.customer_id,c.first_name,c.last_name,sum(oi.unit_price_paid) from customer c 
+join order o on c.customer_id=o.customer_id
+join order_items oi on oi.or
+
+
+-- Second-Purchase Gap: For customers who have made more than one order, 
+-- calculate the number of days between their first and second orders.
+
+-- WITH RankedOrders AS (
+--     SELECT 
+--         customer_id, 
+--         order_date,
+--         ROW_NUMBER() OVER (PARTITION BY customer_id ORDER BY order_date) AS order_sequence
+--     FROM orders
+-- )
+-- SELECT 
+--     o1.customer_id,
+--     o1.order_date AS first_order_date,
+--     o2.order_date AS second_order_date,
+--     (o2.order_date::date - o1.order_date::date) AS days_between_orders
+-- FROM RankedOrders o1
+-- JOIN RankedOrders o2 
+--     ON o1.customer_id = o2.customer_id
+-- WHERE o1.order_sequence = 1 
+--   AND o2.order_sequence = 2;
+-- easy one with using lead
+WITH NextOrders AS (
+    SELECT 
+        customer_id, 
+        order_date AS first_order_date,
+        -- LEAD agli row ki date ko khinch kar isi row mein le aayega
+        LEAD(order_date) OVER (PARTITION BY customer_id ORDER BY order_date) AS second_order_date,
+        -- Har customer ke orders ko sequence number dena
+        ROW_NUMBER() OVER (PARTITION BY customer_id ORDER BY order_date) AS order_sequence
+    FROM orders
+)
+SELECT 
+    customer_id,
+    first_order_date,
+    second_order_date,
+    (second_order_date::date - first_order_date::date) AS days_between_orders
+FROM NextOrders
+WHERE order_sequence = 1; -- Sirf pehla row filter kiya
+-- Product Category Rank per Country: Using window functions, 
+-- assign a dense rank to each product category based on total units sold within each customer country.
+
+WITH two_blocks AS (
+    SELECT 
+        c.country,
+        p.category,
+        p.sub_category,
+        SUM(oi.quantity) AS total_quantity -- Yahan quantity ka sum ho raha hai
+    FROM customer c 
+    JOIN orders o ON c.customer_id = o.customer_id 
+    JOIN order_items oi ON o.order_id = oi.order_id 
+    JOIN products p ON oi.product_id = p.product_id 
+    GROUP BY p.category, p.sub_category, c.country
+)
+SELECT 
+    category,
+    sub_category,
+    country,
+    total_quantity,
+    DENSE_RANK() OVER (PARTITION BY category, sub_category ORDER BY total_quantity DESC) AS rank
+FROM two_blocks;
+
+
+-- Month-over-Month Revenue Growth Rate: Write a query using CTEs and LAG() to calculate total monthly net
+-- revenue and the MoM percentage growth rate for all completed months.
+
+WITH MonthlyNetRevenue AS (
+    -- Step 1: Har mahine ka total net revenue calculate karna
+    SELECT 
+        TO_CHAR(DATE_TRUNC('month', o.order_date), 'Month YYYY') AS revenue_month, 
+        SUM(oi.quantity * oi.unit_price_paid) AS total_net_revenue 
+    FROM orders o
+    JOIN order_items oi ON o.order_id = oi.order_id -- (Note: Table join zaroori hai agar oi alag table hai)
+    WHERE o.order_status = 'delivered' 
+    GROUP BY DATE_TRUNC('month', o.order_date) 
+    ORDER BY DATE_TRUNC('month', o.order_date)
+)
+SELECT * FROM MonthlyNetRevenue;
+
+RevenueWithLag AS (
+    -- Step 2: LAG() function ka use karke pichle mahine ka revenue nikalna
+    SELECT 
+        revenue_month,
+        total_net_revenue,
+        LAG(total_net_revenue) OVER (ORDER BY revenue_month) AS previous_month_revenue
+    FROM MonthlyNetRevenue
+)
+SELECT * FROM MonthlyNetRevenue;
+
+
+-- monthly revenue
+SELECT 
+    TO_CHAR(DATE_TRUNC('month', o.order_date), 'Month YYYY') AS monthly,
+    SUM(oi.quantity * oi.unit_price_paid) AS monthly_wise_sales,
+	o.order_status
+FROM orders o
+JOIN order_items oi ON o.order_id = oi.order_id
+where o.order_status=('delivered')
+GROUP BY DATE_TRUNC('month', o.order_date),o.order_status
+ORDER BY DATE_TRUNC('month', o.order_date);
+
+
+
+
+
+
+-- Order Value Quartiles: Use NTILE(4) to divide delivered orders into four spend buckets (Quartiles 1–4)
+-- based on total order dollar value. Display order_id, customer_id, total spend, and quartile rank.
+
+-- NTILE FUNCTION:
+-- Question 1: Basic Level (Single Table)Hamein saare products ko unki cost (unit_cost) ke hisaab se 3 price categories
+-- (Expensive, Medium, Cheap) mein baantna hai.Task: products table ka use karke ek query likhiye jo har product ko 3 buckets
+-- (groups) mein divide kare, jahan sabse mehnga product Group 1 mein ho aur sabse sasta Group 3 mein.
+WITH partitioned_products AS (
+    SELECT 
+        product_name,
+        unit_cost,
+        NTILE(3) OVER (ORDER BY unit_cost DESC) AS bucket
+    FROM products
+)
+SELECT 
+    product_name,
+    unit_cost,
+    CASE 
+        WHEN bucket = 1 THEN 'Expensive'
+        WHEN bucket = 2 THEN 'Medium'
+        WHEN bucket = 3 THEN 'Cheap'
+    END AS price_category
+FROM partitioned_products;
+-- Question 2: Medium Level (Joins & Aggregation)Hamein check karna hai ki kaunsa
+-- customer sabse zyada revenue generate kar raha hai.Task: order_items table se total revenue calculate 
+-- (quantity * unit_price_paid). Phir un customers ko unke total spent ke basis par 2 groups
+-- (High Spenders vs Low Spenders) mein baantiyee. (Tip: Ismein aapko JOIN aur GROUP BY ka use karna hoga).
+
+
+WITH Quartile AS (
+    SELECT 
+        o.order_id,
+        o.customer_id,
+        SUM(oi.quantity * oi.unit_price_paid) AS total_spend,
+        -- Bracket aur alias ka sahi tarika:
+        NTILE(4) OVER (ORDER BY SUM(oi.quantity * oi.unit_price_paid) DESC) AS quartile_number 
+    FROM orders o 
+    JOIN order_items oi ON o.order_id = oi.order_id  -- 'order_items' correct kiya
+    WHERE o.order_status = 'delivered'
+    GROUP BY o.order_id, o.customer_id
+)
+SELECT 
+    order_id,
+    customer_id,
+    total_spend,
+    -- Aapka incomplete CASE statement ab complete hai:
+    CASE 
+        WHEN quartile_number = 1 THEN 'Tier A (Highest Spend)'
+        WHEN quartile_number = 2 THEN 'Tier B'
+        WHEN quartile_number = 3 THEN 'Tier C'
+        ELSE 'Tier D (Lowest Spend)'
+    END AS spend_tier
+FROM Quartile;
+-- Item Basket Affinity Analysis: Find all distinct pairs of products (product_a vs product_b) that were purchased together within the same order_id at least twice.
+-- Avoid duplicate reverse-pair combinations (e.g., list (A,B), not (B,A)).
+
+SELECT 
+a.product_id AS product_a, 
+b.product_id AS product_b,
+COUNT(*) AS times_purchased_together
+FROM order_items a
+JOIN order_items b 
+ON a.order_id = b.order_id 
+AND a.product_id < b.product_id
+GROUP BY a.product_id, b.product_id
+HAVING COUNT(*) >= 1; -- Shart 1 kar di taake output aaye
+"Advanced / Expert Questions
+Monthly Cohort Retention Analysis: Build a classic retention matrix. 
+Group customers into monthly cohorts by their signup_date. Track what percentage of each cohort placed at least one
+order in Month 0 (signup month), Month 1, Month 2, and Month 3."
+
+
+WITH cohort_sizes AS (
+    -- FIX: customer_id ke sath 'c.' alias lagaya hai
+    SELECT 
+        DATE_TRUNC('month', c.sign_up) AS cohort_month,
+        COUNT(c.customer_id) AS cohort_size
+    FROM customer c
+    GROUP BY 1
+	-- order by 1 asc
+),
+customer_orders AS (
+   SELECT 
+        c.customer_id,
+        DATE_TRUNC('month', c.sign_up) AS cohort_month,o.order_date,
+        (EXTRACT(YEAR FROM o.order_date) - EXTRACT(YEAR FROM c.sign_up)) * 12 +
+        (EXTRACT(MONTH FROM o.order_date) - EXTRACT(MONTH FROM c.sign_up)) AS period_month
+    FROM customer c
+    JOIN orders o ON c.customer_id = o.customer_id
+	order by 1,3 asc
+    -- Note: Yahan se 'order by 1,2 asc' ko hata dein kyunki CTE ke andar order by error deta hai jab main query chalti hai
+)
+SELECT 
+    TO_CHAR(cs.cohort_month, 'Month YYYY') AS cohort,
+    cs.cohort_size,
+    ROUND(COUNT(DISTINCT CASE WHEN co.period_month = 0 THEN co.customer_id END) * 100.0 / cs.cohort_size, 2) || '%' AS month_0,
+    ROUND(COUNT(DISTINCT CASE WHEN co.period_month = 1 THEN co.customer_id END) * 100.0 / cs.cohort_size, 2) || '%' AS month_1,
+    ROUND(COUNT(DISTINCT CASE WHEN co.period_month = 2 THEN co.customer_id END) * 100.0 / cs.cohort_size, 2) || '%' AS month_2,
+    ROUND(COUNT(DISTINCT CASE WHEN co.period_month = 3 THEN co.customer_id END) * 100.0 / cs.cohort_size, 2) || '%' AS month_3
+FROM cohort_sizes cs
+LEFT JOIN customer_orders co ON cs.cohort_month = co.cohort_month
+GROUP BY cs.cohort_month, cs.cohort_size
+ORDER BY cs.cohort_month;
+" Iska matlab hai ki aapka maujooda order aapke pichle sabse bade order ke muqable kitna bada ya chota hai."
+-- Part A (Order Level Summarization): Pehle ek CTE banayein jo orders aur order_items ko
+-- join karke har individual order_id ki total net spend calculate kare. Result mein 
+-- customer_id, order_id, order_date, aur order_total_value hone chahiye.
+
+"
+Part B (Windowing & Ratios): Part A ke Result Set ke upar do Window Functions ek saath lagayein:
+
+running_total: Customer ke pehle order se lekar current order tak ka running sum.
+
+historical_max_spend: Customer ka uss order tak ka sabse bada single order spend 
+(ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)."
+-- Final Column: current_order_value / historical_max_spend ka ratio.
+
+WITH net_spend AS (
+    SELECT 
+        o.customer_id,
+        o.order_id,
+        o.order_date,
+        SUM(oi.unit_price_paid) AS order_total_value
+    FROM orders o 
+    JOIN order_items oi ON o.order_id = oi.order_id
+    GROUP BY o.customer_id, o.order_id, o.order_date
+)
+-- Yahan se Part B shuru hota hai:
+SELECT 
+    customer_id,
+    order_id,
+    order_date,
+    order_total_value,
+    
+    -- 1. Running Total Column
+    SUM(order_total_value) OVER (
+        PARTITION BY customer_id 
+        ORDER BY order_date
+    ) AS running_total,
+    
+    -- 2. Historical Max Spend Column
+    MAX(order_total_value) OVER (
+        PARTITION BY customer_id 
+        ORDER BY order_date
+        ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+    ) AS historical_max_spend,
+    
+    -- 3. Final Ratio Column
+    ROUND(
+        order_total_value / MAX(order_total_value) OVER (
+            PARTITION BY customer_id 
+            ORDER BY order_date
+            ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+        ), 2
+    ) AS spend_ratio
+
+FROM net_spend
+ORDER BY customer_id, order_date;
+
+-- Question 3: 60-Day Rolling Active Customer Count
+
+"Part A (Generating the Date Spine): generate_series() function ka istemal karke
+'2025-01-01' se '2025-03-31' tak ki har din ki date series create karein (Daily Spine).
+Part B (Rolling Window Join): Is Date Spine ko orders table ke saath LEFT JOIN karein 
+condition par ke order_date date-spine ki date se pichle 60 dino ke andar ho (BETWEEN spine_date - INTERVAL '60 days' AND spine_date). 
+Uske baad daily level par COUNT(DISTINCT customer_id) aggregate karein.
+"
+
+
+
+
+
+select * from orders
+select * from customer
+select * from order_items
+select * from products
